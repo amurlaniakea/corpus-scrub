@@ -2,6 +2,7 @@
 
 Se aplica en orden inverso de posiciones para no desplazar índices.
 """
+
 from __future__ import annotations
 
 import hashlib

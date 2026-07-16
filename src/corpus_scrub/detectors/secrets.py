@@ -7,6 +7,7 @@ si se anuncia benchmark de recall de secretos, fijar commit — ver KI-3 en spec
 Cubre asignaciones  key=/api=/token=/secret=/... <valor 10-64 chars, con o sin comillas,
 para valores tipo sk-..., ghp_, AKIA..., bearer_..., etc. Multi-idioma (regex, no NER).
 """
+
 from __future__ import annotations
 
 import re

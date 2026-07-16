@@ -4,11 +4,12 @@ No carga todo en RAM: yield doc a doc. Para jsonl, una línea = un doc (texto pl
 o JSON con campo "text"/"content"). Para txt, un archivo = un doc. Para parquet,
 itera fila a fila usando pyarrow si está disponible.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterator, Tuple, List
+from typing import Iterator, List, Tuple
 
 
 def _read_jsonl(path: Path) -> Iterator[Tuple[str, str]]:
@@ -52,7 +53,8 @@ def _read_parquet(path: Path) -> Iterator[Tuple[str, str]]:
             text_col = table.column_names[0]
         else:
             raise RuntimeError(
-                f"Parquet {path.name} no tiene columna 'text'/'content' y tiene {table.num_columns} columnas"
+                f"Parquet {path.name} no tiene columna 'text'/'content' "
+                f"y tiene {table.num_columns} columnas"
             )
     col = table.column(text_col).to_pylist()
     for i, val in enumerate(col):
