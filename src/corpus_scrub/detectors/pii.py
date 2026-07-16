@@ -22,38 +22,98 @@
 
 Feature 004: EMAIL/IBAN/CREDIT_CARD/PHONE se resuelven con regex propios
 (`detectors.universal`) que NO dependen de Presidio ni de modelo spaCy, así
-funcionan en cualquier idioma. Presidio (AnalyzerEngine + spaCy) queda
-reservado SOLO para PERSON (NER de nombres), que sí necesita modelo por idioma.
+funcionan en cualquier idioma.
 
-Umbral de score solo aplica a PERSON (NER, default 0.85). Los universales
-devuelven score 1.0 porque ya validan checksum (mod-97 / Luhn). AC-4 intacto.
+Feature 006: PERSON (NER) soporta EN (Presidio + en_core_web_lg) y ES/DE/FR
+(spaCy directo, modelo del idioma cargado bajo demanda, fallback xx_ent_wiki_sm
+multilingüe si no hay modelo dedicado).
+
+Umbral de score solo aplica a PERSON en EN (Presidio, default 0.85). En
+multilingüe spaCy no da score 0-1 por entidad -> score 1.0 (spaCy ya decidió);
+el filtro de precisión es el corpus benigno por idioma (AC-4), no numérico.
 """
 
 from __future__ import annotations
 
-from typing import List
+import threading
+from typing import Dict, List
 
 from presidio_analyzer import AnalyzerEngine
 
 from corpus_scrub.detectors import universal
 from corpus_scrub.models import Finding
 
-# Solo PERSON va por NER (Presidio). El resto es universal.
+# Solo PERSON va por NER. El resto es universal.
 _NER_TYPES = {"PERSON"}
+
+# Idiomas con modelo spaCy dedicado (se descargan bajo demanda en producción).
+_SPACY_LANG_MODELS = {
+    "es": "es_core_news_lg",
+    "de": "de_core_news_lg",
+    "fr": "fr_core_news_lg",
+}
+_MULTILINGUAL_FALLBACK = "xx_ent_wiki_sm"
+
+# Cache de pipelines spaCy por modelo (carga única, thread-safe).
+_nlp_cache: Dict[str, object] = {}
+_nlp_lock = threading.Lock()
+
+
+def _load_spacy(model_name: str):
+    """Carga un pipeline spaCy bajo demanda (cacheado). Falla duro si no existe."""
+    with _nlp_lock:
+        if model_name not in _nlp_cache:
+            import spacy
+
+            _nlp_cache[model_name] = spacy.load(model_name)
+    return _nlp_cache[model_name]
 
 
 class PiiDetector:
     def __init__(self, language: str = "en", ner_threshold: float = 0.85):
         self.language = language
         self.ner_threshold = ner_threshold
-        try:
-            self._engine = AnalyzerEngine()
-        except Exception as e:
-            # Falla duro, no silenciosamente (KI-1): sin modelo NER no hay PERSON.
-            raise RuntimeError(
-                f"No se pudo instanciar AnalyzerEngine "
-                f"(¿faltan modelos spaCy para '{language}'?): {e}"
-            ) from e
+        # EN usa Presidio (como MVP/004). ES/DE/FR usan spaCy directo.
+        self._engine = None
+        self._nlp = None
+        if language == "en":
+            try:
+                self._engine = AnalyzerEngine()
+            except Exception as e:
+                raise RuntimeError(
+                    f"No se pudo instanciar AnalyzerEngine (¿faltan modelos spaCy EN?): {e}"
+                ) from e
+        elif language in _SPACY_LANG_MODELS:
+            model = _SPACY_LANG_MODELS[language]
+            try:
+                self._nlp = _load_spacy(model)
+            except Exception:
+                # Fallback multilingüe si no está el modelo dedicado
+                self._nlp = _load_spacy(_MULTILINGUAL_FALLBACK)
+                self._using_fallback = True
+            else:
+                self._using_fallback = False
+        else:
+            # Idioma no soportado: fallback multilingüe (no crashear, KI-1 honesto)
+            self._nlp = _load_spacy(_MULTILINGUAL_FALLBACK)
+            self._using_fallback = True
+
+    def _detect_person_spacy(self, doc_id: str, text: str) -> List[Finding]:
+        findings: List[Finding] = []
+        doc = self._nlp(text)
+        for ent in doc.ents:
+            if ent.label_ == "PER":
+                findings.append(
+                    Finding(
+                        doc_id=doc_id,
+                        type="PERSON",
+                        start=ent.start_char,
+                        end=ent.end_char,
+                        text=ent.text,
+                        score=1.0,
+                    )
+                )
+        return findings
 
     def detect(self, doc_id: str, text: str) -> List[Finding]:
         findings: List[Finding] = []
@@ -62,19 +122,26 @@ class PiiDetector:
         findings += universal.detect_iban(text, doc_id)
         findings += universal.detect_credit_card(text, doc_id)
         findings += universal.detect_phone(text, doc_id)
-        # 2) NER PERSON (Presidio + spaCy, umbral configurable)
-        results = self._engine.analyze(text=text, language=self.language, entities=list(_NER_TYPES))
-        for r in results:
-            if r.score < self.ner_threshold:
-                continue
-            findings.append(
-                Finding(
-                    doc_id=doc_id,
-                    type=r.entity_type,
-                    start=r.start,
-                    end=r.end,
-                    text=text[r.start : r.end],
-                    score=round(r.score, 3),
-                )
+        # 2) NER PERSON
+        if self._engine is not None:
+            # EN: Presidio + umbral
+            results = self._engine.analyze(
+                text=text, language=self.language, entities=list(_NER_TYPES)
             )
+            for r in results:
+                if r.score < self.ner_threshold:
+                    continue
+                findings.append(
+                    Finding(
+                        doc_id=doc_id,
+                        type=r.entity_type,
+                        start=r.start,
+                        end=r.end,
+                        text=text[r.start : r.end],
+                        score=round(r.score, 3),
+                    )
+                )
+        elif self._nlp is not None:
+            # ES/DE/FR (o fallback): spaCy directo
+            findings += self._detect_person_spacy(doc_id, text)
         return findings
