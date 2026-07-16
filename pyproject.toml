@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Detect and redact PII + secrets in ML training corpora before training (local-first, AGPL-3.0)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "AGPL-3.0-or-later" }
+license = "AGPL-3.0-or-later"
 authors = [{ name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com" }]
 keywords = ["pii", "secrets", "ml", "training-data", "privacy", "gdpr", "sanitization"]
 dependencies = [
