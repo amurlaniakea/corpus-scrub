@@ -16,3 +16,8 @@
 {"doc_id": "benign.jsonl:15", "text": "The Amazon warehouse in Seattle uses robots built by Boston Dynamics."}
 {"doc_id": "benign.jsonl:16", "text": "We evaluated the model on the Stanford dataset and compared it against BERT and RoBERTa."}
 {"doc_id": "benign.jsonl:17", "text": "The river Thames flows through London and the Nile passes near Cairo and Khartoum."}
+{"doc_id": "benign.jsonl:18", "text": "The package version v2.7.1.4092 fixed a regression in the parser module."}
+{"doc_id": "benign.jsonl:19", "text": "Connect to 192.168.1.1 on port 8080 and reach 10.0.0.255 via the gateway."}
+{"doc_id": "benign.jsonl:20", "text": "Product codes SKU-551200998877 and batch 441209887766554433221100 are in stock."}
+{"doc_id": "benign.jsonl:21", "text": "The checksum 9821736450918237465 matched after retrying the upload three times."}
+{"doc_id": "benign.jsonl:22", "text": "Reference numbers 1234567890123 and 998877665544332211 should not trigger alerts."}

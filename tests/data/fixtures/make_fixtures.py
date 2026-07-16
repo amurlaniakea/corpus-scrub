@@ -41,13 +41,15 @@ PII_DOCS = [
     "Jane Doe lives at jane.doe@mail.com; her IBAN is DE89 3704 0044 0532 0130 00.",
     "Call William Chen on +1-415-555-2671 or write william.chen@startup.io.",
     "Michael Johnson, card 5500 0000 0000 0004, email michael.j@corp.com.",
-    "Sarah Wilson: sarah.wilson@gov.us, IBAN FR14 2004 1010 0505 0001 3003, "
+    "Sarah Wilson: sarah.wilson@gov.us, IBAN FR62 2004 1010 0505 0001 3003 412, "
     "phone +33 1 70 18 00 00.",
     "Thomas Miller contacted us at thomas.miller@web.net; his number +1-312-555-0987.",
     "Elizabeth Taylor, elizabeth.taylor@film.com, card 4000 0000 0000 0002, "
     "IBAN ES91 2100 0418 4502 0005 1332.",
     "James Anderson james.anderson@news.com phone +1-646-555-7712 name James Anderson.",
     "Patricia Martin patricia.martin@shop.es IBAN IT60 X054 2811 1010 0000 0123 456.",
+    # Teléfono internacional ES (+34) para cubrir AC-004-2 (formato intl no-US)
+    "Luis Fernández luis.fernandez@empresa.es teléfono +34 612 345 678, cuenta bancaria.",
 ]
 
 # AC-2: secretos sintéticos (api_key=sk-..., ghp_..., token=...)
@@ -88,6 +90,13 @@ BENIGN_DOCS = [
     "The Amazon warehouse in Seattle uses robots built by Boston Dynamics.",
     "We evaluated the model on the Stanford dataset and compared it against BERT and RoBERTa.",
     "The river Thames flows through London and the Nile passes near Cairo and Khartoum.",
+    # --- Casos numéricos NO telefónicos (condición #2 de 004): el regex de PHONE
+    # no debe confundir estas secuencias con teléfonos.
+    "The package version v2.7.1.4092 fixed a regression in the parser module.",
+    "Connect to 192.168.1.1 on port 8080 and reach 10.0.0.255 via the gateway.",
+    "Product codes SKU-551200998877 and batch 441209887766554433221100 are in stock.",
+    "The checksum 9821736450918237465 matched after retrying the upload three times.",
+    "Reference numbers 1234567890123 and 998877665544332211 should not trigger alerts.",
 ]
 
 
