@@ -20,6 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 testing = ["pytest>=8", "pytest-cov>=5", "jsonschema>=4"]
 dev = ["ruff>=0.5"]
+parquet = ["pyarrow>=15"]
 
 [project.scripts]
 corpus-scrub = "corpus_scrub.cli:main"
