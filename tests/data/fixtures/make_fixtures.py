@@ -58,6 +58,13 @@ BENIGN_DOCS = [
     "The bridge was repaired after the inspection found minor structural issues.",
     "Gardens benefit from regular watering and exposure to direct sunlight.",
     "The museum displayed artifacts describing daily life in past centuries.",
+    # --- Casos adversariales (KI-2): el NER PERSON tiende a confundir estos con PERSON ---
+    "Apple released a new version of macOS that improves battery life on the MacBook.",
+    "Our team deployed the service using Kubernetes and PostgreSQL running on Linux servers.",
+    "Google and Microsoft announced a partnership to develop TensorFlow-based tools.",
+    "The Amazon warehouse in Seattle uses robots built by Boston Dynamics.",
+    "We evaluated the model on the Stanford dataset and compared it against BERT and RoBERTa.",
+    "The river Thames flows through London and the Nile passes near Cairo and Khartoum.",
 ]
 
 

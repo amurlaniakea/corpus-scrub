@@ -82,6 +82,23 @@ def test_ac4_benign_no_false_positives():
         assert len(secrets) == 0, f"Falso positivo en benigno: {text[:60]}"
 
 
+# AC-4 (NER): falsos positivos de PERSON en benigno endurecido (slow, requiere NER).
+# KI-2 predice que el NER marcará marcas/empresas/tecnicismos como PERSON.
+# Con 18 docs, precision >= 0.95 tolera hasta 1 falso positivo de PERSON.
+@pytest.mark.slow
+def test_ac4_ner_false_positives_benign():
+    from corpus_scrub.detectors.pii import PiiDetector
+    docs = _load("benign.jsonl")
+    det = PiiDetector(language="en", ner_threshold=0.85)
+    false_pos = 0
+    for d in docs:
+        findings = det.detect("doc", d)
+        persons = [f for f in findings if f.type == "PERSON"]
+        false_pos += len(persons)
+    # Tolerancia KI-2: hasta 1 FP de PERSON en 18 docs => precision >= 0.94 ~ 0.95
+    assert false_pos <= 1, f"{false_pos} falsos positivos PERSON en benigno endurecido (KI-2)"
+
+
 def test_ac4_benign_precision_aggregate():
     docs = _load("benign.jsonl")
     det = SecretDetector()

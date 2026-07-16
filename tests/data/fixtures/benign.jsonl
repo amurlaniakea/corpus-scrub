@@ -10,3 +10,9 @@
 {"doc_id": "benign.jsonl:9", "text": "The bridge was repaired after the inspection found minor structural issues."}
 {"doc_id": "benign.jsonl:10", "text": "Gardens benefit from regular watering and exposure to direct sunlight."}
 {"doc_id": "benign.jsonl:11", "text": "The museum displayed artifacts describing daily life in past centuries."}
+{"doc_id": "benign.jsonl:12", "text": "Apple released a new version of macOS that improves battery life on the MacBook."}
+{"doc_id": "benign.jsonl:13", "text": "Our team deployed the service using Kubernetes and PostgreSQL running on Linux servers."}
+{"doc_id": "benign.jsonl:14", "text": "Google and Microsoft announced a partnership to develop TensorFlow-based tools."}
+{"doc_id": "benign.jsonl:15", "text": "The Amazon warehouse in Seattle uses robots built by Boston Dynamics."}
+{"doc_id": "benign.jsonl:16", "text": "We evaluated the model on the Stanford dataset and compared it against BERT and RoBERTa."}
+{"doc_id": "benign.jsonl:17", "text": "The river Thames flows through London and the Nile passes near Cairo and Khartoum."}
