@@ -169,7 +169,7 @@ def test_ac6_cli_scan_end_to_end(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     lines = [json.loads(line) for line in out_file.read_text().splitlines() if line.strip()]
-    assert len(lines) == 12, f"CLI no procesó todos los docs: {len(lines)}"
+    assert len(lines) == 13, f"CLI no procesó todos los docs: {len(lines)}"
     rep = json.loads(report_file.read_text())
     assert rep["total_findings"] >= 12, "Reporte sin hallazgos PII"
 
@@ -204,16 +204,16 @@ def test_ac7_non_en_language_rejected():
 # Mapa de PII sembrado por doc (ver pii_seed.jsonl).
 _SEEDED = {
     "EMAIL_ADDRESS": [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    "PERSON": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    "PHONE_NUMBER": [0, 3, 5, 7, 8, 10],
+    "PERSON": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    "PHONE_NUMBER": [0, 3, 5, 7, 8, 10, 12],
     "IBAN_CODE": [1, 4, 7, 9, 11],
     "CREDIT_CARD": [2, 6, 9],
 }
 
-# Tipos donde AC-1 garantiza recall >= 0.95 en MVP (verificado 2026-07-16).
-# PHONE_NUMBER (score ~0.4 < umbral 0.85) e IBAN_CODE (0.80) quedan FUERA de garantia
-# -> KI-4. No se ocultan: test_ac1_phone_iban_below_threshold lo documenta.
-_AC1_GUARANTEED = {"EMAIL_ADDRESS", "PERSON", "CREDIT_CARD"}
+# Tipos donde AC-1 garantiza recall >= 0.95 tras Feature 004 (desacople universal).
+# EMAIL/PERSON/CREDIT_CARD (regex/Luhn + NER en_core_web_lg) y ahora PHONE/IBAN
+# (regex propios con mod-97 / formato intl). Ver spec/features/004-universal-detectors.
+_AC1_GUARANTEED = {"EMAIL_ADDRESS", "PERSON", "CREDIT_CARD", "PHONE_NUMBER", "IBAN_CODE"}
 
 
 @pytest.mark.slow
@@ -238,11 +238,10 @@ def test_ac1_pii_recall_by_type():
     print("\nAC-1 recall por tipo:\n" + "\n".join(report_lines))
 
 
+# Feature 004: PHONE/IBAN ahora DEBEN dar recall >= 0.95 (fix de causa raíz con
+# regex propio, no umbral global). Si cae < 0.95, el desacople falló.
 @pytest.mark.slow
-def test_ac1_phone_iban_below_threshold():
-    """Documenta (no oculta) que PHONE_NUMBER e IBAN_CODE caen por debajo de 0.95
-    en MVP por el umbral de score / recognizer. KI-4. Si alguno sube a >=0.95 en el
-    futuro, este test falla y hay que moverlo a _AC1_GUARANTEED."""
+def test_ac4_phone_iban_now_guaranteed():
     from corpus_scrub.detectors.pii import PiiDetector
 
     docs = _load("pii_seed.jsonl")
@@ -251,7 +250,67 @@ def test_ac1_phone_iban_below_threshold():
     for pii_type in ("PHONE_NUMBER", "IBAN_CODE"):
         seeded = _SEEDED[pii_type]
         recall = sum(1 for i in seeded if pii_type in dt[i]) / len(seeded)
-        assert recall < 0.95, (
-            f"{pii_type} subio a recall={recall:.2f} >= 0.95; "
-            "mover a _AC1_GUARANTEED y actualizar KI-4"
+        assert recall >= 0.95, (
+            f"{pii_type} recall={recall:.2f} < 0.95 tras Feature 004; "
+            "revisar detectors/universal.py"
         )
+
+
+# --- Feature 004: tests unitarios de detectores universales (fast, sin NER) ---
+
+
+def test_004_iban_mod97_checksum():
+    """Condición #1: IBAN valida checksum mod-97, no solo formato.
+    FR15... (generado con mod-97==1) debe detectarse; un IBAN con checksum
+    inválido (cambio último dígito) debe rechazarse."""
+    from corpus_scrub.detectors import universal
+
+    ok = universal.detect_iban("IBAN FR62 2004 1010 0505 0001 3003 412 end")
+    assert len(ok) == 1 and ok[0].type == "IBAN_CODE"
+    # checksum roto -> rechazado
+    bad = universal.detect_iban("IBAN FR62 2004 1010 0505 0001 3003 413 end")
+    assert bad == [], "IBAN con checksum inválido no debe detectarse"
+    # DE89 válido
+    assert len(universal.detect_iban("DE89 3704 0044 0532 0130 00")) == 1
+
+
+def test_004_credit_card_luhn():
+    """Condición #3: tarjeta valida Luhn, no solo longitud.
+    4111 1111 1111 1111 (Visa test, Luhn OK) -> detectada;
+    4111 1111 1111 1112 (Luhn roto) -> rechazada."""
+    from corpus_scrub.detectors import universal
+
+    ok = universal.detect_credit_card("card 4111 1111 1111 1111 charged")
+    assert len(ok) == 1 and ok[0].type == "CREDIT_CARD"
+    bad = universal.detect_credit_card("card 4111 1111 1111 1112 charged")
+    assert bad == [], "Tarjeta sin Luhn válido no debe detectarse"
+
+
+def test_004_phone_no_overlap_numeric():
+    """Condición #2: el regex de PHONE NO debe confundir secuencias numéricas
+    no telefónicas (versiones, IPs, códigos de producto)."""
+    from corpus_scrub.detectors import universal
+
+    texts = [
+        "version v2.7.1.4092 fixed parser",
+        "connect to 192.168.1.1 port 8080",
+        "SKU-551200998877 batch 441209887766554433221100",
+        "checksum 9821736450918237465 matched",
+        "reference 1234567890123 and 998877665544332211",
+    ]
+    for t in texts:
+        hits = universal.detect_phone(t)
+        assert hits == [], f"PHONE falsamente detectó en: {t!r}"
+
+
+def test_004_phone_international():
+    """PHONE intl (+44 UK, +34 ES, +1 US) debe detectarse tras Feature 004."""
+    from corpus_scrub.detectors import universal
+
+    for txt in [
+        "call +44 20 7946 0958 office",
+        "teléfono +34 612 345 678 cuenta",
+        "reach +1-202-555-0143 now",
+    ]:
+        hits = universal.detect_phone(txt)
+        assert len(hits) == 1 and hits[0].type == "PHONE_NUMBER", f"fallo en {txt!r}"
