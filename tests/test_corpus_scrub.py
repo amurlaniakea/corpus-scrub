@@ -314,3 +314,69 @@ def test_004_phone_international():
     ]:
         hits = universal.detect_phone(txt)
         assert len(hits) == 1 and hits[0].type == "PHONE_NUMBER", f"fallo en {txt!r}"
+
+
+# --- Feature 004: resolución de overlaps entre detectores independientes ---
+
+
+def test_004_resolve_overlaps_keeps_longest():
+    """IBAN [5:32] y PHONE [15:32] se solapan; el más largo (IBAN) gana."""
+    from corpus_scrub.detectors import universal
+    from corpus_scrub.redact import resolve_overlaps
+
+    text = "IBAN GB82 WEST 1234 5698 7654 32 confirmed by phone +44 12 3456 7654."
+    fs = universal.detect_iban(text) + universal.detect_phone(text)
+    kept = resolve_overlaps(fs)
+    types = {f.type for f in kept}
+    assert "IBAN_CODE" in types, "IBAN debe ganar el overlap"
+    assert "PHONE_NUMBER" not in {f.type for f in kept if f.start == 15}, (
+        "PHONE solapado [15:32] debe descartarse"
+    )
+    # el PHONE no solapado (+44 12...) sí queda
+    assert any(f.type == "PHONE_NUMBER" and f.start == 53 for f in kept)
+
+
+def test_004_redact_no_corrupt_on_overlap():
+    """Reproduce el bug de integración: IBAN+teléfono en mismo doc no corrompe
+    el texto circundante (el 'co' de 'confirmed' no debe desaparecer)."""
+    from corpus_scrub.detectors import universal
+    from corpus_scrub.redact import redact_text
+
+    text = "IBAN GB82 WEST 1234 5698 7654 32 confirmed by phone +44 12 3456 7654."
+    fs = universal.detect_iban(text) + universal.detect_phone(text)
+    out = redact_text(text, fs, policy="mask")
+    assert "confirmed" in out, f"TEXTO CORRUPTO: {out!r}"
+    assert out == "IBAN <IBAN_CODE> confirmed by phone +<PHONE_NUMBER>."
+
+
+def test_004_no_overlap_combinations():
+    """Busca solapamientos no deseados entre pares de detectores con combinaciones
+    sintéticas (CARD vs PHONE con agrupaciones de 4, IBAN vs CARD, etc.). Ningún
+    span de distinto tipo debe solaparse en estos casos controlados."""
+    from corpus_scrub.detectors import universal
+
+    cases = [
+        # CARD (4111 1111 1111 1111) y PHONE juntos: no deben solaparse
+        "card 4111 1111 1111 1111 and phone +1-202-555-0143",
+        # IBAN y CARD juntos
+        "IBAN DE89 3704 0044 0532 0130 00 paid with 5500 0000 0000 0004",
+        # EMAIL y PHONE juntos
+        "write john@example.com or call +44 20 7946 0958",
+        # dos PHONE con agrupaciones de 4 dígitos cerca de CARD
+        "call +1 202 555 0143 or card 4000 0000 0000 0002 here",
+    ]
+    for t in cases:
+        # EMAIL + IBAN + CARD + PHONE juntos (todos los detectores)
+        allf = (
+            universal.detect_email(t)
+            + universal.detect_iban(t)
+            + universal.detect_credit_card(t)
+            + universal.detect_phone(t)
+        )
+        # verificar que no hay solapamientos entre distintos tipos
+        spans = sorted(allf, key=lambda f: f.start)
+        for a, b in zip(spans, spans[1:], strict=False):
+            assert not (a.start < b.end and b.start < a.end), (
+                f"Overlap no resuelto en {t!r}: {a.type}{a.start}:{a.end} vs "
+                f"{b.type}{b.start}:{b.end}"
+            )
