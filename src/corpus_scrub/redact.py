@@ -52,42 +52,46 @@ def _overlaps(a: Finding, b: Finding) -> bool:
 
 
 def resolve_overlaps(findings: List[Finding]) -> List[Finding]:
-    """Devuelve findings sin spans solapados.
+    """Devuelve findings SIN spans solapados (disjuntos por construcción).
 
-    Criterio: de dos findings que se solapan, se queda el de MAYOR prioridad de
-    tipo (SECRET > IBAN/CARD > EMAIL > PHONE > PERSON); en empate, el de mayor
-    longitud (end-start). El perdedor se descarta.
+    Enfoque: merge de intervalos por COMPONENTES CONEXAS (adyacencia/solape
+    transitivo), NO pairwise contra un solo elemento. Si A solapa B y B solapa C,
+    los tres forman un mismo clúster aunque A y C no se toquen directamente. Esto
+    garantiza matemáticamente que la salida es disjunta, no solo en los casos
+    probados (ver tercer bug de auditoría post-#8: un finding puente de menor
+    prioridad conectaba transitivamente a dos findings ya aceptados que no se
+    solapaban entre sí; el fix pairwise previo solo expandía uno y reiniciaba la
+    corrupción de texto original).
 
-    El orden de evaluación es por PRIORIDAD GLOBAL (y longitud), NO por posición de
-    inicio: si un finding de menor prioridad empieza antes pero uno de mayor
-    prioridad lo solapa, el de mayor prioridad gana y no se pierde silenciosamente.
-    Esto evita la fuga de datos que ocurría antes (ver bug de prioridad Feature 004 /
-    auditoría post-#7): el algoritmo antiguo ordenaba por `start` y solo desempataba
-    por prioridad entre findings con el MISMO inicio, descartando así el de mayor
-    prioridad cuando empezaba más tarde.
+    Dentro de cada clúster: el tipo ganador es el de MAYOR prioridad (empate: más
+    largo). El span resultado es la UNIÓN de todo el clúster -> cobertura completa,
+    sin fuga de PII (mejor sobre-redactar que dejar datos en texto plano).
     """
-    # orden: prioridad desc, luego longitud desc, luego start asc (determinista)
-    ordered = sorted(
-        findings,
-        key=lambda f: (-_TYPE_PRIORITY.get(f.type, 0), -(f.end - f.start), f.start),
-    )
-    kept: List[Finding] = []
-    for f in ordered:
-        # clúster de findings ya conservados que se solapan con f
-        cluster = [k for k in kept if _overlaps(f, k)]
-        if not cluster:
-            kept.append(f)
+    if not findings:
+        return []
+    # 1. Ordenar por start para fusionar por adyacencia/solape (componentes conexas)
+    ordered = sorted(findings, key=lambda f: f.start)
+    clusters: List[List[Finding]] = []
+    current = [ordered[0]]
+    current_end = ordered[0].end
+    for f in ordered[1:]:
+        if f.start < current_end:  # se solapa con el clúster en curso
+            current.append(f)
+            current_end = max(current_end, f.end)
         else:
-            # El ganador ya en `kept` absorbe el rango de f: se expande a la UNIÓN
-            # para no perder cobertura de redacción. Mejor sobre-redactar (unificar
-            # el label bajo el tipo de mayor prioridad) que dejar fuga de PII en la
-            # zona de solapamiento parcial (ver bug de solapamiento parcial, auditoría
-            # post-#8: el perdedor solo se solapaba en parte, pero su parte "limpia"
-            # también era PII y se descartaba entera -> fuga).
-            winner = cluster[0]
-            winner.start = min(winner.start, f.start)
-            winner.end = max(winner.end, f.end)
-    return sorted(kept, key=lambda f: f.start)
+            clusters.append(current)
+            current = [f]
+            current_end = f.end
+    clusters.append(current)
+
+    # 2. Por clúster: ganador = mayor prioridad (empate: más largo); span = unión
+    result: List[Finding] = []
+    for cluster in clusters:
+        winner = max(cluster, key=lambda f: (_TYPE_PRIORITY.get(f.type, 0), f.end - f.start))
+        winner.start = min(f.start for f in cluster)
+        winner.end = max(f.end for f in cluster)
+        result.append(winner)
+    return result
 
 
 def redact_text(text: str, findings: List[Finding], policy: str = "mask") -> str:

@@ -436,6 +436,44 @@ def test_004_resolve_overlaps_chain_union():
     assert out[8:] == "B" * 5, "solo [30:35] queda (fuera de PII)"
 
 
+def test_004_resolve_overlaps_bridge_transitive():
+    """Tercer bug (auditoría post-#8): un finding de MENOR prioridad actúa de PUENTE
+    entre dos findings que NO se solapaban entre sí (SECRET[0:25], EMAIL[28:40]),
+    conectándolos transitivamente. El fix pairwise anterior solo expandía uno y dejaba
+    dos spans solapados en `kept` -> corrupción de texto original (45->13, 32 perdidos).
+    El enfoque de componentes conexas debe unir los tres en UN solo span disjunto.
+
+    El assert de longitud detecta automáticamente cualquier pérdida de caracteres:
+    len(salida) == len(texto) - len(span_redactado) + len(tag)."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "C" * 45
+    f_secret = Finding(doc_id="d", type="SECRET", start=0, end=25, text="x", score=1.0)
+    f_email = Finding(doc_id="d", type="EMAIL_ADDRESS", start=28, end=40, text="y", score=1.0)
+    f_bridge = Finding(doc_id="d", type="PERSON", start=20, end=30, text="z", score=1.0)
+
+    kept = resolve_overlaps([f_secret, f_email, f_bridge])
+    # UN solo finding, disjunto por construcción (sin solapamientos internos)
+    assert len(kept) == 1, f"debe unirse en 1 span, got {len(kept)}"
+    w = kept[0]
+    assert w.type == "SECRET", "ganador = mayor prioridad (SECRET 6 > EMAIL 4 > PERSON 2)"
+    assert w.start == 0 and w.end == 40, f"union [0:40], got [{w.start}:{w.end}]"
+    # verificacion explicita de disjuncion
+    spans = sorted((k.start, k.end) for k in kept)
+    for (s1, e1), (s2, e2) in zip(spans, spans[1:], strict=False):
+        assert not (s1 < e2 and s2 < e1), "spans solapados en kept"
+
+    out = redact_text(text, [f_secret, f_email, f_bridge], policy="mask")
+    redacted_span = w.end - w.start  # 40
+    tag_len = len("<SECRET>")
+    expected_len = len(text) - redacted_span + tag_len
+    assert len(out) == expected_len, (
+        f"perdida de caracteres: {repr(out)} (esperado {expected_len} chars)"
+    )
+    assert out == "<SECRET>" + text[40:], f"corrupcion: {repr(out)}"
+
+
 def test_004_redact_no_corrupt_on_overlap():
     """Reproduce el bug de integración: IBAN+teléfono en mismo doc no corrompe
     el texto circundante (el 'co' de 'confirmed' no debe desaparecer)."""
