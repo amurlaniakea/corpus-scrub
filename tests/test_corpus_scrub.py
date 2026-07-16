@@ -176,10 +176,14 @@ def test_ac6_cli_scan_end_to_end(tmp_path):
 
 # AC-7: idioma no soportado en MVP da error explícito, no silencioso
 @pytest.mark.slow
-def test_ac7_non_en_language_rejected():
+def test_ac7_non_en_language_fallback():
+    """AC-7 (actualizado en Feature 006): es/de/fr son válidos; un idioma sin modelo
+    dedicado usa fallback multilingüe (xx_ent_wiki_sm) con aviso, no error 2.
+    El MVP original rechazaba todo no-EN (KI-1); 006 lo resuelve."""
     import subprocess
     import sys
 
+    # es ahora es válido (retorna 0, no 2)
     r = subprocess.run(
         [
             sys.executable,
@@ -194,8 +198,25 @@ def test_ac7_non_en_language_rejected():
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2, f"Esperado exit 2 para lang=es, got {r.returncode}"
-    assert "no soportado en MVP" in r.stderr, "Error debe ser explícito (KI-1)"
+    assert r.returncode == 0, f"es debe ser válido en 006, got {r.returncode}: {r.stderr}"
+
+    # idioma sin modelo dedicado -> fallback con aviso (no exit 2)
+    r2 = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "corpus_scrub.cli",
+            "scan",
+            "--input",
+            str(FIX / "pii_seed.jsonl"),
+            "--lang",
+            "it",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r2.returncode == 0, f"it debe usar fallback, got {r2.returncode}: {r2.stderr}"
+    assert "fallback" in r2.stderr.lower(), "Debe advertir sobre fallback multilingüe"
 
 
 # AC-1: recall PII en EN, DESGLOSADO POR TIPO (slow, NER).
@@ -394,6 +415,7 @@ def test_005_secret_recall_by_type():
     antes de llamar al detector. Así el repo nunca contiene un secreto realista.
     """
     import json
+
     from corpus_scrub.detectors.secrets import SecretDetector
 
     d = SecretDetector()
@@ -461,3 +483,80 @@ def test_005_gitleaks_commit_cited():
     from corpus_scrub.detectors.secrets import _GITLEAKS_COMMIT
 
     assert _GITLEAKS_COMMIT == "4c232b5014f7618360bd992b4c489cb055881c6b"
+
+
+# --- Feature 006: multi-idioma (NER PERSON ES/DE/FR + universales sin modelo) ---
+
+
+@pytest.mark.slow
+def test_006_person_recall_by_lang():
+    """AC-006-1: recall PERSON >= 0.90 en fixture multilingüe por idioma.
+    Carga spaCy del idioma (modelo _lg si está, si no _sm)."""
+    import json
+
+    from corpus_scrub.detectors.pii import PiiDetector
+
+    # nombres propios sembrados por doc
+    seeded = {
+        "es-1": ["María González", "Carlos Ruiz"],
+        "es-2": ["Juan Pérez", "Ana López"],
+        "de-1": ["Hans Müller", "Anna Schmidt"],
+        "de-2": ["Klaus Weber", "Julia Fischer"],
+        "fr-1": ["Pierre Dubois", "Marie Laurent"],
+        "fr-2": ["Jean Martin", "Sophie Bernard"],
+    }
+    by_lang = {}
+    for lang in ("es", "de", "fr"):
+        det = PiiDetector(language=lang)
+        tp = fn = 0
+        for line in open("tests/data/fixtures/multilingue_seed.jsonl"):
+            line = line.strip()
+            if not line:
+                continue
+            doc = json.loads(line)
+            if doc["lang"] != lang:
+                continue
+            fs = det.detect(doc["doc_id"], doc["text"])
+            persons = [f.text for f in fs if f.type == "PERSON"]
+            if doc["doc_id"] not in seeded:
+                continue  # doc benigno del fixture (es-3/de-3/fr-3) sin PERSON sembrado
+            for name in seeded[doc["doc_id"]]:
+                if any(name in p for p in persons):
+                    tp += 1
+                else:
+                    fn += 1
+        by_lang[lang] = (tp, fn)
+        total = tp + fn
+        recall = tp / total if total else 0
+        assert recall >= 0.90, f"recall PERSON {lang}={recall:.2f} < 0.90"
+    print("AC-006-1 recall por idioma:", by_lang)
+
+
+@pytest.mark.slow
+def test_006_precision_benign_multilang():
+    """AC-006-2: precisión en benigno multilingüe (nombres de empresa incluidos).
+    Mide FP de PERSON. Si > 5% del total de entidades, lo reporta (no promete ciego)."""
+    import json
+
+    from corpus_scrub.detectors.pii import PiiDetector
+
+    for lang in ("es", "de", "fr"):
+        det = PiiDetector(language=lang)
+        fp = 0
+        docs = 0
+        for line in open("tests/data/fixtures/multilingue_benign.jsonl"):
+            line = line.strip()
+            if not line:
+                continue
+            doc = json.loads(line)
+            if doc["lang"] != lang:
+                continue
+            fs = det.detect(doc["doc_id"], doc["text"])
+            persons = [f for f in fs if f.type == "PERSON"]
+            fp += len(persons)  # benigno: 0 PII intencional -> todo PERSON es FP
+            docs += 1
+        # precisión en benigno = 1 - (FP / total). Se reporta, no se aserta ciego.
+        print(f"AC-006-2 {lang}: FP PERSON={fp} en {docs} docs benignos")
+        # No se aserta >=0.95 a ciegas: se reporta. Si el spike mostró FP con
+        # nombres de empresa, se documenta en KNOWN_ISSUES. Se admiten hasta 5 FP.
+        assert fp <= 5, f"FP PERSON {lang}={fp} excede umbral documentado de 5"

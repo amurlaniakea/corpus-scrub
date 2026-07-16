@@ -79,14 +79,15 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "scan":
-        if args.lang != "en":
-            # KI-1: ES/DE/FR fuera de MVP. Error explícito, no silencioso.
+        # KI-1 resuelto en Feature 006: EN (Presidio), ES/DE/FR (spaCy dedicado),
+        # resto -> fallback multilingüe xx_ent_wiki_sm (no crashea, advertido).
+        supported = {"en", "es", "de", "fr"}
+        if args.lang not in supported:
             print(
-                f"ERROR: language '{args.lang}' no soportado en MVP (solo 'en'). "
-                f"Ver spec.md KI-1 / Fase 2.",
+                f"AVISO: language '{args.lang}' sin modelo dedicado; usando fallback "
+                f"multilingüe (xx_ent_wiki_sm). Soporte garantizado: en/es/de/fr.",
                 file=sys.stderr,
             )
-            return 2
         findings, redacted_docs = _scan(args.input, args.lang, args.policy, args.ner_threshold)
         if args.report:
             write_report(findings, args.report)
