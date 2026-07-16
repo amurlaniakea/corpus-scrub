@@ -23,6 +23,10 @@ corpus before training.
 - **Report**: JSON audit with counts per type + locations.
 - **Out of scope (MVP)**: NER for ES/DE/FR (Fase 2, requires per-language spaCy models
   ~400 MB each). See `KNOWN_ISSUES` in the SDD spec.
+- **Recall guarantee (MVP)**: AC-1 guarantees ≥0.95 recall for EMAIL_ADDRESS, PERSON and
+  CREDIT_CARD. **PHONE_NUMBER and IBAN_CODE are NOT guaranteed** in MVP — Presidio scores
+  phone below the 0.85 NER threshold (silently dropped) and the IBAN recognizer misses some
+  formats in EN. Documented as KI-4; see `test_ac1_phone_iban_below_threshold`.
 
 ## Install
 

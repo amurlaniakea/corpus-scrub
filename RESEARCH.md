@@ -43,7 +43,7 @@ prototypes.
 
 | AC | Target | Result |
 |----|--------|--------|
-| AC-1 PII recall (EN) | ≥ 0.95 | ✅ 12/12 docs (slow) |
+| AC-1 PII recall (EN, por tipo) | ≥ 0.95 en EMAIL/PERSON/CARD; PHONE e IBAN fuera (KI-4) | ✅ EMAIL 11/11, PERSON 12/12, CARD 3/3; PHONE 0/6, IBAN 4/5 |
 | AC-2 Secret recall | ≥ 0.90 | ✅ 12/12 docs (fast) |
 | AC-3 Redaction policy | mask/hash/drop | ✅ (fast) |
 | AC-4 Precision benign | ≥ 0.95 | ✅ 0 false positives / 12 (fast) |

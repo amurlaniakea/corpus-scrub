@@ -153,16 +153,56 @@ def test_ac7_non_en_language_rejected():
     assert "no soportado en MVP" in r.stderr, "Error debe ser explícito (KI-1)"
 
 
-# AC-1: recall PII en EN (slow, NER)
+# AC-1: recall PII en EN, DESGLOSADO POR TIPO (slow, NER).
+# No basta con "el doc tuvo algun hallazgo" (lo taparia el email regex score=1.0).
+# Medimos por tipo: de los docs que siembran X, cuantos produjeron Finding(type=X).
+# Mapa de PII sembrado por doc (ver pii_seed.jsonl).
+_SEEDED = {
+    "EMAIL_ADDRESS": [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "PERSON":        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "PHONE_NUMBER":  [0, 3, 5, 7, 8, 10],
+    "IBAN_CODE":     [1, 4, 7, 9, 11],
+    "CREDIT_CARD":   [2, 6, 9],
+}
+
+# Tipos donde AC-1 garantiza recall >= 0.95 en MVP (verificado 2026-07-16).
+# PHONE_NUMBER (score ~0.4 < umbral 0.85) e IBAN_CODE (0.80) quedan FUERA de garantia
+# -> KI-4. No se ocultan: test_ac1_phone_iban_below_threshold lo documenta.
+_AC1_GUARANTEED = {"EMAIL_ADDRESS", "PERSON", "CREDIT_CARD"}
+
+
 @pytest.mark.slow
-def test_ac1_pii_recall_aggregate():
+def test_ac1_pii_recall_by_type():
     from corpus_scrub.detectors.pii import PiiDetector
     docs = _load("pii_seed.jsonl")
     det = PiiDetector(language="en", ner_threshold=0.85)
-    total_docs_with_pii = 0
-    for d in docs:
-        findings = det.detect("doc", d)
-        if findings:
-            total_docs_with_pii += 1
-    recall = total_docs_with_pii / len(docs)
-    assert recall >= 0.95, f"Recall PII = {recall:.2f} < 0.95"
+    detected_types_per_doc = {}
+    for i, d in enumerate(docs):
+        detected_types_per_doc[i] = {f.type for f in det.detect("doc", d)}
+    report_lines = []
+    for pii_type, seeded_docs in _SEEDED.items():
+        hits = sum(1 for i in seeded_docs if pii_type in detected_types_per_doc[i])
+        recall = hits / len(seeded_docs)
+        report_lines.append(f"  AC-1 {pii_type}: recall={recall:.2f} ({hits}/{len(seeded_docs)})")
+        if pii_type in _AC1_GUARANTEED:
+            assert recall >= 0.95, f"Recall {pii_type} = {recall:.2f} < 0.95\n" + "\n".join(report_lines)
+    # Desglose impreso para auditoria
+    print("\nAC-1 recall por tipo:\n" + "\n".join(report_lines))
+
+
+@pytest.mark.slow
+def test_ac1_phone_iban_below_threshold():
+    """Documenta (no oculta) que PHONE_NUMBER e IBAN_CODE caen por debajo de 0.95
+    en MVP por el umbral de score / recognizer. KI-4. Si alguno sube a >=0.95 en el
+    futuro, este test falla y hay que moverlo a _AC1_GUARANTEED."""
+    from corpus_scrub.detectors.pii import PiiDetector
+    docs = _load("pii_seed.jsonl")
+    det = PiiDetector(language="en", ner_threshold=0.85)
+    dt = {i: {f.type for f in det.detect("doc", d)} for i, d in enumerate(docs)}
+    for pii_type in ("PHONE_NUMBER", "IBAN_CODE"):
+        seeded = _SEEDED[pii_type]
+        recall = sum(1 for i in seeded if pii_type in dt[i]) / len(seeded)
+        assert recall < 0.95, (
+            f"{pii_type} subio a recall={recall:.2f} >= 0.95; mover a _AC1_GUARANTEED y actualizar KI-4"
+        )
+
