@@ -20,7 +20,6 @@
 
 """Tests de readers.py — cobertura de jsonl/txt/parquet/dir (Feature 003 soporte)."""
 
-
 import pytest
 
 from corpus_scrub.readers import iter_docs

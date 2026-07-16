@@ -357,6 +357,34 @@ def test_004_resolve_overlaps_keeps_longest():
     assert any(f.type == "PHONE_NUMBER" and f.start == 53 for f in kept)
 
 
+def test_004_resolve_overlaps_priority_beats_position():
+    """Caso reportado en auditoría post-#7 (bug de prioridad): un finding de MENOR
+    prioridad que empieza ANTES y uno de MAYOR prioridad que lo solapa más tarde.
+    El de MAYOR prioridad debe ganar y NO perderse silenciosamente (fuga de PII).
+
+    Reproducción exacta del hallazgo: PHONE_NUMBER [5:20] (prioridad 3) empieza
+    antes; IBAN_CODE [10:40] (prioridad 5) lo solapa. El IBAN debe conservarse
+    entero y el PHONE quedar absorbido (sin fuga de dígitos del IBAN)."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "01234567891011121314151617181920212223242526272829303132333435363738394041"
+    f_phone = Finding(doc_id="d", type="PHONE_NUMBER", start=5, end=20, text="x", score=1.0)
+    f_iban = Finding(doc_id="d", type="IBAN_CODE", start=10, end=40, text="y", score=1.0)
+
+    kept = resolve_overlaps([f_phone, f_iban])
+    types = {f.type for f in kept}
+    assert "IBAN_CODE" in types, "IBAN (mayor prioridad) no debe perderse"
+    assert "PHONE_NUMBER" not in types, "PHONE solapado debe absorberse por IBAN"
+
+    out = redact_text(text, [f_phone, f_iban], policy="mask")
+    assert "<IBAN_CODE>" in out, "IBAN debe redactarse"
+    # dígitos INTERNOS del IBAN (índices 10..39 = '10'..'24') no en texto plano
+    assert "1011" not in out and "2324" not in out, "FUGA interna de IBAN"
+    # el PHONE no aparece como span propio
+    assert "<PHONE_NUMBER>" not in out
+
+
 def test_004_redact_no_corrupt_on_overlap():
     """Reproduce el bug de integración: IBAN+teléfono en mismo doc no corrompe
     el texto circundante (el 'co' de 'confirmed' no debe desaparecer)."""

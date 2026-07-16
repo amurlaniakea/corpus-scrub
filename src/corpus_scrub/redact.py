@@ -54,24 +54,28 @@ def _overlaps(a: Finding, b: Finding) -> bool:
 def resolve_overlaps(findings: List[Finding]) -> List[Finding]:
     """Devuelve findings sin spans solapados.
 
-    Criterio: de dos findings que se solapan, se queda el de mayor longitud
-    (end-start); en empate, el de mayor prioridad de tipo. El perdedor se
-    descarta. Esto evita la corrupción de texto que ocurría al redactar spans
-    que comparten caracteres (ver bug de integración Feature 004).
+    Criterio: de dos findings que se solapan, se queda el de MAYOR prioridad de
+    tipo (SECRET > IBAN/CARD > EMAIL > PHONE > PERSON); en empate, el de mayor
+    longitud (end-start). El perdedor se descarta.
+
+    El orden de evaluación es por PRIORIDAD GLOBAL (y longitud), NO por posición de
+    inicio: si un finding de menor prioridad empieza antes pero uno de mayor
+    prioridad lo solapa, el de mayor prioridad gana y no se pierde silenciosamente.
+    Esto evita la fuga de datos que ocurría antes (ver bug de prioridad Feature 004 /
+    auditoría post-#7): el algoritmo antiguo ordenaba por `start` y solo desempataba
+    por prioridad entre findings con el MISMO inicio, descartando así el de mayor
+    prioridad cuando empezaba más tarde.
     """
-    # orden estable: por start asc, luego prioridad desc para desempate determinista
+    # orden: prioridad desc, luego longitud desc, luego start asc (determinista)
     ordered = sorted(
         findings,
-        key=lambda f: (f.start, -_TYPE_PRIORITY.get(f.type, 0), -(f.end - f.start)),
+        key=lambda f: (-_TYPE_PRIORITY.get(f.type, 0), -(f.end - f.start), f.start),
     )
     kept: List[Finding] = []
     for f in ordered:
-        if any(_overlaps(f, k) for k in kept):
-            # f se solapa con algo ya conservado: comparar para decidir qué queda
-            # (el ya conservado ganó por ser más largo/prioritario en el orden)
-            continue
-        kept.append(f)
-    return kept
+        if not any(_overlaps(f, k) for k in kept):
+            kept.append(f)
+    return sorted(kept, key=lambda f: f.start)
 
 
 def redact_text(text: str, findings: List[Finding], policy: str = "mask") -> str:
