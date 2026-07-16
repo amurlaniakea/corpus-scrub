@@ -1,0 +1,12 @@
+{"doc_id": "pii_seed.jsonl:0", "text": "Contact John Smith at john.smith@example.com or call +1-202-555-0143."}
+{"doc_id": "pii_seed.jsonl:1", "text": "Maria Garcia reached me at maria.garcia@company.org about IBAN GB82 WEST 1234 5698 7654 32."}
+{"doc_id": "pii_seed.jsonl:2", "text": "His card 4111 1111 1111 1111 was charged and he is David Lee."}
+{"doc_id": "pii_seed.jsonl:3", "text": "Email alice.wong@university.edu, phone +44 20 7946 0958, name Robert Brown."}
+{"doc_id": "pii_seed.jsonl:4", "text": "Jane Doe lives at jane.doe@mail.com; her IBAN is DE89 3704 0044 0532 0130 00."}
+{"doc_id": "pii_seed.jsonl:5", "text": "Call William Chen on +1-415-555-2671 or write william.chen@startup.io."}
+{"doc_id": "pii_seed.jsonl:6", "text": "Michael Johnson, card 5500 0000 0000 0004, email michael.j@corp.com."}
+{"doc_id": "pii_seed.jsonl:7", "text": "Sarah Wilson: sarah.wilson@gov.us, IBAN FR14 2004 1010 0505 0001 3003, phone +33 1 70 18 00 00."}
+{"doc_id": "pii_seed.jsonl:8", "text": "Thomas Miller contacted us at thomas.miller@web.net; his number +1-312-555-0987."}
+{"doc_id": "pii_seed.jsonl:9", "text": "Elizabeth Taylor, elizabeth.taylor@film.com, card 4000 0000 0000 0002, IBAN ES91 2100 0418 4502 0005 1332."}
+{"doc_id": "pii_seed.jsonl:10", "text": "James Anderson james.anderson@news.com phone +1-646-555-7712 name James Anderson."}
+{"doc_id": "pii_seed.jsonl:11", "text": "Patricia Martin patricia.martin@shop.es IBAN IT60 X054 2811 1010 0000 0123 456."}
