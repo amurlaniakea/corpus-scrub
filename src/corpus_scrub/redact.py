@@ -73,8 +73,20 @@ def resolve_overlaps(findings: List[Finding]) -> List[Finding]:
     )
     kept: List[Finding] = []
     for f in ordered:
-        if not any(_overlaps(f, k) for k in kept):
+        # clúster de findings ya conservados que se solapan con f
+        cluster = [k for k in kept if _overlaps(f, k)]
+        if not cluster:
             kept.append(f)
+        else:
+            # El ganador ya en `kept` absorbe el rango de f: se expande a la UNIÓN
+            # para no perder cobertura de redacción. Mejor sobre-redactar (unificar
+            # el label bajo el tipo de mayor prioridad) que dejar fuga de PII en la
+            # zona de solapamiento parcial (ver bug de solapamiento parcial, auditoría
+            # post-#8: el perdedor solo se solapaba en parte, pero su parte "limpia"
+            # también era PII y se descartaba entera -> fuga).
+            winner = cluster[0]
+            winner.start = min(winner.start, f.start)
+            winner.end = max(winner.end, f.end)
     return sorted(kept, key=lambda f: f.start)
 
 

@@ -385,6 +385,57 @@ def test_004_resolve_overlaps_priority_beats_position():
     assert "<PHONE_NUMBER>" not in out
 
 
+def test_004_resolve_overlaps_partial_expands_to_union():
+    """Bug de solapamiento PARCIAL (auditoría post-#8): el perdedor solo se solapa
+    en parte; su porción 'limpia' (también PII) no debe quedar sin redactar. El
+    ganador se expande a la UNIÓN del clúster (sobre-redactar antes que fug ar).
+
+    PERSON [0:15] y SECRET [10:25] se solapan solo en [10:15]; [0:10] es PERSON puro.
+    """
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "A" * 35
+    fa = Finding(doc_id="d", type="PERSON", start=0, end=15, text="x", score=1.0)
+    fb = Finding(doc_id="d", type="SECRET", start=10, end=25, text="y", score=1.0)
+
+    kept = resolve_overlaps([fa, fb])
+    # un solo finding ganador, expandido a la union [0:25]
+    assert len(kept) == 1
+    w = kept[0]
+    assert w.type == "SECRET"
+    assert w.start == 0 and w.end == 25, (
+        f"ganador debe expandirse a union [0:25], got [{w.start}:{w.end}]"
+    )
+
+    out = redact_text(text, [fa, fb], policy="mask")
+    # toda la zona [0:25] redactada bajo un unico tag; [25:35] intacta (no era PII)
+    assert out.startswith("<SECRET>"), "union [0:25] debe redactarse"
+    assert out[8:] == "A" * 10, "solo [25:35] queda en texto plano (fuera de PII)"
+    assert "<PERSON>" not in out
+
+
+def test_004_resolve_overlaps_chain_union():
+    """Cadena de 3 findings solapados parcialmente: la union se consolida bajo el
+    tipo de mayor prioridad y ningun caracter de ninguno queda sin redactar."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "B" * 35
+    f1 = Finding(doc_id="d", type="EMAIL_ADDRESS", start=0, end=10, text="x", score=1.0)
+    f2 = Finding(doc_id="d", type="SECRET", start=8, end=20, text="y", score=1.0)
+    f3 = Finding(doc_id="d", type="PHONE_NUMBER", start=18, end=30, text="z", score=1.0)
+
+    kept = resolve_overlaps([f1, f2, f3])
+    assert len(kept) == 1
+    assert kept[0].type == "SECRET"
+    assert kept[0].start == 0 and kept[0].end == 30
+
+    out = redact_text(text, [f1, f2, f3], policy="mask")
+    assert out.startswith("<SECRET>")
+    assert out[8:] == "B" * 5, "solo [30:35] queda (fuera de PII)"
+
+
 def test_004_redact_no_corrupt_on_overlap():
     """Reproduce el bug de integración: IBAN+teléfono en mismo doc no corrompe
     el texto circundante (el 'co' de 'confirmed' no debe desaparecer)."""
