@@ -1,0 +1,24 @@
+# Aislamiento: excluir todo lo sensible y artefactos
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secretos / credenciales (nunca versionar)
+.hermes/
+.gnupg/
+.aws/
+credentials/
+*.pem
+*.key
+.env
+store.db
+
+# Modelos spaCy grandes (se descargan en runtime, no se commitean)
+*.bin
