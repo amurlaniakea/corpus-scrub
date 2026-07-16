@@ -7,6 +7,7 @@ Para ES/DE/FR ver KI-1 en spec.md (Fase 2, requiere modelo por idioma).
 Umbral de score configurable (default 0.85 del spike). Trade-off con AC-4
 documentado en spec.md.
 """
+
 from __future__ import annotations
 
 from typing import List
@@ -35,7 +36,8 @@ class PiiDetector:
         except Exception as e:
             # Falla duro, no silenciosamente (KI-1): sin modelo NER no hay recognizers.
             raise RuntimeError(
-                f"No se pudo instanciar AnalyzerEngine (¿faltan modelos spaCy para '{language}'?): {e}"
+                f"No se pudo instanciar AnalyzerEngine "
+                f"(¿faltan modelos spaCy para '{language}'?): {e}"
             ) from e
 
     def detect(self, doc_id: str, text: str) -> List[Finding]:

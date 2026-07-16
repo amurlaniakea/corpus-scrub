@@ -2,6 +2,7 @@
 
 Conteos por tipo + lista de hallazgos con ubicación.
 """
+
 from __future__ import annotations
 
 import json

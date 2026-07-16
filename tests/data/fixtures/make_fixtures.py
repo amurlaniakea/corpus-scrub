@@ -6,6 +6,7 @@ estadístico (un solo fallo en 10 casos = 0.90, detectable; en 1 caso sería rui
 Semilla fija para reproducibilidad. PII sembrada se conocen de antemano para
 calcular recall en AC-1.
 """
+
 import json
 from pathlib import Path
 
@@ -20,9 +21,11 @@ PII_DOCS = [
     "Jane Doe lives at jane.doe@mail.com; her IBAN is DE89 3704 0044 0532 0130 00.",
     "Call William Chen on +1-415-555-2671 or write william.chen@startup.io.",
     "Michael Johnson, card 5500 0000 0000 0004, email michael.j@corp.com.",
-    "Sarah Wilson: sarah.wilson@gov.us, IBAN FR14 2004 1010 0505 0001 3003, phone +33 1 70 18 00 00.",
+    "Sarah Wilson: sarah.wilson@gov.us, IBAN FR14 2004 1010 0505 0001 3003, "
+    "phone +33 1 70 18 00 00.",
     "Thomas Miller contacted us at thomas.miller@web.net; his number +1-312-555-0987.",
-    "Elizabeth Taylor, elizabeth.taylor@film.com, card 4000 0000 0000 0002, IBAN ES91 2100 0418 4502 0005 1332.",
+    "Elizabeth Taylor, elizabeth.taylor@film.com, card 4000 0000 0000 0002, "
+    "IBAN ES91 2100 0418 4502 0005 1332.",
     "James Anderson james.anderson@news.com phone +1-646-555-7712 name James Anderson.",
     "Patricia Martin patricia.martin@shop.es IBAN IT60 X054 2811 1010 0000 0123 456.",
 ]
@@ -79,4 +82,7 @@ if __name__ == "__main__":
     _write("pii_seed.jsonl", PII_DOCS)
     _write("secrets_seed.jsonl", SECRET_DOCS)
     _write("benign.jsonl", BENIGN_DOCS)
-    print(f"Fixtures escritos: {len(PII_DOCS)} PII, {len(SECRET_DOCS)} secretos, {len(BENIGN_DOCS)} benignos")
+    print(
+        f"Fixtures escritos: {len(PII_DOCS)} PII, {len(SECRET_DOCS)} secretos, "
+        f"{len(BENIGN_DOCS)} benignos"
+    )

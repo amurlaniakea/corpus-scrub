@@ -6,6 +6,7 @@ AC-3/AC-4/AC-5/AC-7 son fast (no requieren NER).
 
 Sin @parametrize (evita el parser de marcadores de pytest 9.x con valores no-string).
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,9 @@ from pathlib import Path
 import pytest
 
 from corpus_scrub.detectors.secrets import SecretDetector
+from corpus_scrub.models import Finding
 from corpus_scrub.redact import redact_text
 from corpus_scrub.report import build_report
-from corpus_scrub.models import Finding
 
 FIX = Path(__file__).parent / "data" / "fixtures"
 
@@ -88,6 +89,7 @@ def test_ac4_benign_no_false_positives():
 @pytest.mark.slow
 def test_ac4_ner_false_positives_benign():
     from corpus_scrub.detectors.pii import PiiDetector
+
     docs = _load("benign.jsonl")
     det = PiiDetector(language="en", ner_threshold=0.85)
     false_pos = 0
@@ -122,18 +124,31 @@ def test_ac5_report_structure():
 # AC-6: streaming CLI (slow, requiere NER)
 @pytest.mark.slow
 def test_ac6_cli_scan_end_to_end(tmp_path):
-    from corpus_scrub.cli import main
-    import subprocess, sys
+    import subprocess
+    import sys
+
     out_file = tmp_path / "redacted.jsonl"
     report_file = tmp_path / "report.json"
     r = subprocess.run(
-        [sys.executable, "-m", "corpus_scrub.cli", "scan",
-         "--input", str(FIX / "pii_seed.jsonl"),
-         "--policy", "mask", "--out", str(out_file), "--report", str(report_file)],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "corpus_scrub.cli",
+            "scan",
+            "--input",
+            str(FIX / "pii_seed.jsonl"),
+            "--policy",
+            "mask",
+            "--out",
+            str(out_file),
+            "--report",
+            str(report_file),
+        ],
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, r.stderr
-    lines = [json.loads(l) for l in out_file.read_text().splitlines() if l.strip()]
+    lines = [json.loads(line) for line in out_file.read_text().splitlines() if line.strip()]
     assert len(lines) == 12, f"CLI no procesó todos los docs: {len(lines)}"
     rep = json.loads(report_file.read_text())
     assert rep["total_findings"] >= 12, "Reporte sin hallazgos PII"
@@ -142,12 +157,22 @@ def test_ac6_cli_scan_end_to_end(tmp_path):
 # AC-7: idioma no soportado en MVP da error explícito, no silencioso
 @pytest.mark.slow
 def test_ac7_non_en_language_rejected():
-    from corpus_scrub.cli import main
-    import subprocess, sys
+    import subprocess
+    import sys
+
     r = subprocess.run(
-        [sys.executable, "-m", "corpus_scrub.cli", "scan",
-         "--input", str(FIX / "pii_seed.jsonl"), "--lang", "es"],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "corpus_scrub.cli",
+            "scan",
+            "--input",
+            str(FIX / "pii_seed.jsonl"),
+            "--lang",
+            "es",
+        ],
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 2, f"Esperado exit 2 para lang=es, got {r.returncode}"
     assert "no soportado en MVP" in r.stderr, "Error debe ser explícito (KI-1)"
@@ -159,10 +184,10 @@ def test_ac7_non_en_language_rejected():
 # Mapa de PII sembrado por doc (ver pii_seed.jsonl).
 _SEEDED = {
     "EMAIL_ADDRESS": [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    "PERSON":        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    "PHONE_NUMBER":  [0, 3, 5, 7, 8, 10],
-    "IBAN_CODE":     [1, 4, 7, 9, 11],
-    "CREDIT_CARD":   [2, 6, 9],
+    "PERSON": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "PHONE_NUMBER": [0, 3, 5, 7, 8, 10],
+    "IBAN_CODE": [1, 4, 7, 9, 11],
+    "CREDIT_CARD": [2, 6, 9],
 }
 
 # Tipos donde AC-1 garantiza recall >= 0.95 en MVP (verificado 2026-07-16).
@@ -174,6 +199,7 @@ _AC1_GUARANTEED = {"EMAIL_ADDRESS", "PERSON", "CREDIT_CARD"}
 @pytest.mark.slow
 def test_ac1_pii_recall_by_type():
     from corpus_scrub.detectors.pii import PiiDetector
+
     docs = _load("pii_seed.jsonl")
     det = PiiDetector(language="en", ner_threshold=0.85)
     detected_types_per_doc = {}
@@ -185,7 +211,9 @@ def test_ac1_pii_recall_by_type():
         recall = hits / len(seeded_docs)
         report_lines.append(f"  AC-1 {pii_type}: recall={recall:.2f} ({hits}/{len(seeded_docs)})")
         if pii_type in _AC1_GUARANTEED:
-            assert recall >= 0.95, f"Recall {pii_type} = {recall:.2f} < 0.95\n" + "\n".join(report_lines)
+            assert recall >= 0.95, f"Recall {pii_type} = {recall:.2f} < 0.95\n" + "\n".join(
+                report_lines
+            )
     # Desglose impreso para auditoria
     print("\nAC-1 recall por tipo:\n" + "\n".join(report_lines))
 
@@ -196,6 +224,7 @@ def test_ac1_phone_iban_below_threshold():
     en MVP por el umbral de score / recognizer. KI-4. Si alguno sube a >=0.95 en el
     futuro, este test falla y hay que moverlo a _AC1_GUARANTEED."""
     from corpus_scrub.detectors.pii import PiiDetector
+
     docs = _load("pii_seed.jsonl")
     det = PiiDetector(language="en", ner_threshold=0.85)
     dt = {i: {f.type for f in det.detect("doc", d)} for i, d in enumerate(docs)}
@@ -203,6 +232,6 @@ def test_ac1_phone_iban_below_threshold():
         seeded = _SEEDED[pii_type]
         recall = sum(1 for i in seeded if pii_type in dt[i]) / len(seeded)
         assert recall < 0.95, (
-            f"{pii_type} subio a recall={recall:.2f} >= 0.95; mover a _AC1_GUARANTEED y actualizar KI-4"
+            f"{pii_type} subio a recall={recall:.2f} >= 0.95; "
+            "mover a _AC1_GUARANTEED y actualizar KI-4"
         )
-
