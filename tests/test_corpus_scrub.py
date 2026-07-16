@@ -380,3 +380,84 @@ def test_004_no_overlap_combinations():
                 f"Overlap no resuelto en {t!r}: {a.type}{a.start}:{a.end} vs "
                 f"{b.type}{b.start}:{b.end}"
             )
+
+
+# --- Feature 005: secret ruleset (gitleaks port) ---
+
+
+def test_005_secret_recall_by_type():
+    """AC-005-1: recall >= 0.90 por tipo de secreto en fixtures sintéticos.
+
+    TODOS los tokens se generan EN RUNTIME (ofuscados en el código fuente para no
+    disparar GitHub Push Protection). El fixture solo contiene placeholders EXAMPLE;
+    el test los sustituye por valores sintéticos válidos para las regex de gitleaks
+    antes de llamar al detector. Así el repo nunca contiene un secreto realista.
+    """
+    import json
+    from corpus_scrub.detectors.secrets import SecretDetector
+
+    d = SecretDetector()
+    # tokens ofuscados (concatenados) para no disparar escáneres de secretos externos
+    tok = {
+        "GITHUB_PAT_PLACEHOLDER": "ghp_" + "EXAMPLEtoken0000000000000000000000abcd",
+        "GITHUB_OAUTH_PLACEHOLDER": "gho_" + "EXAMPLEtoken0000000000000000000000abcd",
+        "SLACK_BOT_TOKEN_PLACEHOLDER": "xo" + "xb-123456789012-123456789012-AbCdEfGhIjKlMnOpQr",
+        "SLACK_WEBHOOK_PLACEHOLDER": "https://hook"
+        + "s.slack.com/services/T00000000/B00000000/"
+        + "X" * 44,
+        "STRIPE_TOKEN_PLACEHOLDER": "sk_live_" + "EXAMPLEtoken00000000000000000000abcd",
+        "STRIPE_RESTRICTED_PLACEHOLDER": "rk_test_" + "EXAMPLEtoken00000000000000000000abcd",
+        "GITLAB_PAT_PLACEHOLDER": "glpat-" + "EXAMPLEtoken0000000000000000000000abcd",
+        "OPENAI_KEY_PLACEHOLDER": "sk-" + "B" * 20 + "T3BlbkFJ" + "C" * 20,
+        "ANTHROPIC_KEY_PLACEHOLDER": "sk-ant-api03-" + "A" * 93 + "AA",
+        "PYPI_TOKEN_PLACEHOLDER": "pypi-AgEIcH" + "D" * 10 + "vcmc" + "E" * 25,
+        "GENERIC_API_KEY_PLACEHOLDER": "sk-" + "EXAMPLEtoken00000000000000000000abcd",
+        "GENERIC_TOKEN_PLACEHOLDER": "EXAMPLEtoken00000000000000000000abcd",
+    }
+
+    total = 0
+    detected = 0
+    for line in open("tests/data/fixtures/secrets_typed.jsonl"):
+        line = line.strip()
+        if not line:
+            continue
+        doc = json.loads(line)
+        text = doc["text"]
+        for ph, val in tok.items():
+            if ph in text:
+                text = text.replace(ph, val)
+        fs = d.detect(doc["doc_id"], text)
+        total += 1
+        if fs:  # al menos un secreto detectado en el doc sembrado
+            detected += 1
+    recall = detected / total
+    assert recall >= 0.90, f"recall secretos={recall:.2f} < 0.90"
+    assert detected == total, f"docs con secreto no detectado: {total - detected}"
+
+
+def test_005_secret_precision_benign():
+    """AC-005-2: 0 FP en corpus benigno paritario (logs, código, prose sin secretos)."""
+    import json
+
+    from corpus_scrub.detectors.secrets import SecretDetector
+
+    d = SecretDetector()
+    fp = 0
+    for line in open("tests/data/fixtures/secrets_benign.jsonl"):
+        line = line.strip()
+        if not line:
+            continue
+        doc = json.loads(line)
+        fs = d.detect(doc["doc_id"], doc["text"])
+        # b4 contiene 'ghp_placeholder' y un hex largo de ejemplo -> es benigno
+        # real (no es un token real); si el detector lo marca, es FP controlada.
+        # El fixture está diseñado para NO contener secretos reales.
+        fp += len(fs)
+    assert fp == 0, f"secretos falsos positivos en benigno: {fp}"
+
+
+def test_005_gitleaks_commit_cited():
+    """KI-3: el ruleset cita el commit fijado de gitleaks."""
+    from corpus_scrub.detectors.secrets import _GITLEAKS_COMMIT
+
+    assert _GITLEAKS_COMMIT == "4c232b5014f7618360bd992b4c489cb055881c6b"
