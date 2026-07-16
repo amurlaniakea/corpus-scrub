@@ -357,6 +357,123 @@ def test_004_resolve_overlaps_keeps_longest():
     assert any(f.type == "PHONE_NUMBER" and f.start == 53 for f in kept)
 
 
+def test_004_resolve_overlaps_priority_beats_position():
+    """Caso reportado en auditoría post-#7 (bug de prioridad): un finding de MENOR
+    prioridad que empieza ANTES y uno de MAYOR prioridad que lo solapa más tarde.
+    El de MAYOR prioridad debe ganar y NO perderse silenciosamente (fuga de PII).
+
+    Reproducción exacta del hallazgo: PHONE_NUMBER [5:20] (prioridad 3) empieza
+    antes; IBAN_CODE [10:40] (prioridad 5) lo solapa. El IBAN debe conservarse
+    entero y el PHONE quedar absorbido (sin fuga de dígitos del IBAN)."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "01234567891011121314151617181920212223242526272829303132333435363738394041"
+    f_phone = Finding(doc_id="d", type="PHONE_NUMBER", start=5, end=20, text="x", score=1.0)
+    f_iban = Finding(doc_id="d", type="IBAN_CODE", start=10, end=40, text="y", score=1.0)
+
+    kept = resolve_overlaps([f_phone, f_iban])
+    types = {f.type for f in kept}
+    assert "IBAN_CODE" in types, "IBAN (mayor prioridad) no debe perderse"
+    assert "PHONE_NUMBER" not in types, "PHONE solapado debe absorberse por IBAN"
+
+    out = redact_text(text, [f_phone, f_iban], policy="mask")
+    assert "<IBAN_CODE>" in out, "IBAN debe redactarse"
+    # dígitos INTERNOS del IBAN (índices 10..39 = '10'..'24') no en texto plano
+    assert "1011" not in out and "2324" not in out, "FUGA interna de IBAN"
+    # el PHONE no aparece como span propio
+    assert "<PHONE_NUMBER>" not in out
+
+
+def test_004_resolve_overlaps_partial_expands_to_union():
+    """Bug de solapamiento PARCIAL (auditoría post-#8): el perdedor solo se solapa
+    en parte; su porción 'limpia' (también PII) no debe quedar sin redactar. El
+    ganador se expande a la UNIÓN del clúster (sobre-redactar antes que fug ar).
+
+    PERSON [0:15] y SECRET [10:25] se solapan solo en [10:15]; [0:10] es PERSON puro.
+    """
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "A" * 35
+    fa = Finding(doc_id="d", type="PERSON", start=0, end=15, text="x", score=1.0)
+    fb = Finding(doc_id="d", type="SECRET", start=10, end=25, text="y", score=1.0)
+
+    kept = resolve_overlaps([fa, fb])
+    # un solo finding ganador, expandido a la union [0:25]
+    assert len(kept) == 1
+    w = kept[0]
+    assert w.type == "SECRET"
+    assert w.start == 0 and w.end == 25, (
+        f"ganador debe expandirse a union [0:25], got [{w.start}:{w.end}]"
+    )
+
+    out = redact_text(text, [fa, fb], policy="mask")
+    # toda la zona [0:25] redactada bajo un unico tag; [25:35] intacta (no era PII)
+    assert out.startswith("<SECRET>"), "union [0:25] debe redactarse"
+    assert out[8:] == "A" * 10, "solo [25:35] queda en texto plano (fuera de PII)"
+    assert "<PERSON>" not in out
+
+
+def test_004_resolve_overlaps_chain_union():
+    """Cadena de 3 findings solapados parcialmente: la union se consolida bajo el
+    tipo de mayor prioridad y ningun caracter de ninguno queda sin redactar."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "B" * 35
+    f1 = Finding(doc_id="d", type="EMAIL_ADDRESS", start=0, end=10, text="x", score=1.0)
+    f2 = Finding(doc_id="d", type="SECRET", start=8, end=20, text="y", score=1.0)
+    f3 = Finding(doc_id="d", type="PHONE_NUMBER", start=18, end=30, text="z", score=1.0)
+
+    kept = resolve_overlaps([f1, f2, f3])
+    assert len(kept) == 1
+    assert kept[0].type == "SECRET"
+    assert kept[0].start == 0 and kept[0].end == 30
+
+    out = redact_text(text, [f1, f2, f3], policy="mask")
+    assert out.startswith("<SECRET>")
+    assert out[8:] == "B" * 5, "solo [30:35] queda (fuera de PII)"
+
+
+def test_004_resolve_overlaps_bridge_transitive():
+    """Tercer bug (auditoría post-#8): un finding de MENOR prioridad actúa de PUENTE
+    entre dos findings que NO se solapaban entre sí (SECRET[0:25], EMAIL[28:40]),
+    conectándolos transitivamente. El fix pairwise anterior solo expandía uno y dejaba
+    dos spans solapados en `kept` -> corrupción de texto original (45->13, 32 perdidos).
+    El enfoque de componentes conexas debe unir los tres en UN solo span disjunto.
+
+    El assert de longitud detecta automáticamente cualquier pérdida de caracteres:
+    len(salida) == len(texto) - len(span_redactado) + len(tag)."""
+    from corpus_scrub.models import Finding
+    from corpus_scrub.redact import redact_text, resolve_overlaps
+
+    text = "C" * 45
+    f_secret = Finding(doc_id="d", type="SECRET", start=0, end=25, text="x", score=1.0)
+    f_email = Finding(doc_id="d", type="EMAIL_ADDRESS", start=28, end=40, text="y", score=1.0)
+    f_bridge = Finding(doc_id="d", type="PERSON", start=20, end=30, text="z", score=1.0)
+
+    kept = resolve_overlaps([f_secret, f_email, f_bridge])
+    # UN solo finding, disjunto por construcción (sin solapamientos internos)
+    assert len(kept) == 1, f"debe unirse en 1 span, got {len(kept)}"
+    w = kept[0]
+    assert w.type == "SECRET", "ganador = mayor prioridad (SECRET 6 > EMAIL 4 > PERSON 2)"
+    assert w.start == 0 and w.end == 40, f"union [0:40], got [{w.start}:{w.end}]"
+    # verificacion explicita de disjuncion
+    spans = sorted((k.start, k.end) for k in kept)
+    for (s1, e1), (s2, e2) in zip(spans, spans[1:], strict=False):
+        assert not (s1 < e2 and s2 < e1), "spans solapados en kept"
+
+    out = redact_text(text, [f_secret, f_email, f_bridge], policy="mask")
+    redacted_span = w.end - w.start  # 40
+    tag_len = len("<SECRET>")
+    expected_len = len(text) - redacted_span + tag_len
+    assert len(out) == expected_len, (
+        f"perdida de caracteres: {repr(out)} (esperado {expected_len} chars)"
+    )
+    assert out == "<SECRET>" + text[40:], f"corrupcion: {repr(out)}"
+
+
 def test_004_redact_no_corrupt_on_overlap():
     """Reproduce el bug de integración: IBAN+teléfono en mismo doc no corrompe
     el texto circundante (el 'co' de 'confirmed' no debe desaparecer)."""

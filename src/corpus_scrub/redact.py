@@ -52,26 +52,46 @@ def _overlaps(a: Finding, b: Finding) -> bool:
 
 
 def resolve_overlaps(findings: List[Finding]) -> List[Finding]:
-    """Devuelve findings sin spans solapados.
+    """Devuelve findings SIN spans solapados (disjuntos por construcción).
 
-    Criterio: de dos findings que se solapan, se queda el de mayor longitud
-    (end-start); en empate, el de mayor prioridad de tipo. El perdedor se
-    descarta. Esto evita la corrupción de texto que ocurría al redactar spans
-    que comparten caracteres (ver bug de integración Feature 004).
+    Enfoque: merge de intervalos por COMPONENTES CONEXAS (adyacencia/solape
+    transitivo), NO pairwise contra un solo elemento. Si A solapa B y B solapa C,
+    los tres forman un mismo clúster aunque A y C no se toquen directamente. Esto
+    garantiza matemáticamente que la salida es disjunta, no solo en los casos
+    probados (ver tercer bug de auditoría post-#8: un finding puente de menor
+    prioridad conectaba transitivamente a dos findings ya aceptados que no se
+    solapaban entre sí; el fix pairwise previo solo expandía uno y reiniciaba la
+    corrupción de texto original).
+
+    Dentro de cada clúster: el tipo ganador es el de MAYOR prioridad (empate: más
+    largo). El span resultado es la UNIÓN de todo el clúster -> cobertura completa,
+    sin fuga de PII (mejor sobre-redactar que dejar datos en texto plano).
     """
-    # orden estable: por start asc, luego prioridad desc para desempate determinista
-    ordered = sorted(
-        findings,
-        key=lambda f: (f.start, -_TYPE_PRIORITY.get(f.type, 0), -(f.end - f.start)),
-    )
-    kept: List[Finding] = []
-    for f in ordered:
-        if any(_overlaps(f, k) for k in kept):
-            # f se solapa con algo ya conservado: comparar para decidir qué queda
-            # (el ya conservado ganó por ser más largo/prioritario en el orden)
-            continue
-        kept.append(f)
-    return kept
+    if not findings:
+        return []
+    # 1. Ordenar por start para fusionar por adyacencia/solape (componentes conexas)
+    ordered = sorted(findings, key=lambda f: f.start)
+    clusters: List[List[Finding]] = []
+    current = [ordered[0]]
+    current_end = ordered[0].end
+    for f in ordered[1:]:
+        if f.start < current_end:  # se solapa con el clúster en curso
+            current.append(f)
+            current_end = max(current_end, f.end)
+        else:
+            clusters.append(current)
+            current = [f]
+            current_end = f.end
+    clusters.append(current)
+
+    # 2. Por clúster: ganador = mayor prioridad (empate: más largo); span = unión
+    result: List[Finding] = []
+    for cluster in clusters:
+        winner = max(cluster, key=lambda f: (_TYPE_PRIORITY.get(f.type, 0), f.end - f.start))
+        winner.start = min(f.start for f in cluster)
+        winner.end = max(f.end for f in cluster)
+        result.append(winner)
+    return result
 
 
 def redact_text(text: str, findings: List[Finding], policy: str = "mask") -> str:
