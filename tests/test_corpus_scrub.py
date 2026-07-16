@@ -402,7 +402,9 @@ def test_005_secret_recall_by_type():
         "GITHUB_PAT_PLACEHOLDER": "ghp_" + "EXAMPLEtoken0000000000000000000000abcd",
         "GITHUB_OAUTH_PLACEHOLDER": "gho_" + "EXAMPLEtoken0000000000000000000000abcd",
         "SLACK_BOT_TOKEN_PLACEHOLDER": "xo" + "xb-123456789012-123456789012-AbCdEfGhIjKlMnOpQr",
-        "SLACK_WEBHOOK_PLACEHOLDER": "https://hook" + "s.slack.com/services/T00000000/B00000000/" + "X" * 44,
+        "SLACK_WEBHOOK_PLACEHOLDER": "https://hook"
+        + "s.slack.com/services/T00000000/B00000000/"
+        + "X" * 44,
         "STRIPE_TOKEN_PLACEHOLDER": "sk_live_" + "EXAMPLEtoken00000000000000000000abcd",
         "STRIPE_RESTRICTED_PLACEHOLDER": "rk_test_" + "EXAMPLEtoken00000000000000000000abcd",
         "GITLAB_PAT_PLACEHOLDER": "glpat-" + "EXAMPLEtoken0000000000000000000000abcd",
