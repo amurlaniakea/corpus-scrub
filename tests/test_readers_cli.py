@@ -73,7 +73,7 @@ def test_cli_report_and_out(tmp_path):
     )
     assert rc == 0
     lines = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
-    assert lines[0]["text"] == "api_key = <SECRET>"
+    assert lines[0]["text"] == "<SECRET>"
     rep_json = json.loads(rep.read_text())
     assert rep_json["total_findings"] >= 1
     assert rep_json["counts_by_type"].get("SECRET", 0) == 1
