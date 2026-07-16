@@ -63,6 +63,11 @@ Current coverage: **82%** (measured via `pytest --cov`, see CI).
 
 AGPL-3.0-or-later. Dependencies (Presidio, spaCy, gitleaks regex) are MIT and compatible.
 
+If you run `corpus-scrub` as a network service (e.g. exposing the scan over HTTP),
+AGPL §13 requires you to offer the corresponding source to remote users — see
+<https://www.gnu.org/licenses/agpl-3.0.html#section13>. For the local CLI use case
+this does not apply in practice, but the obligation is noted.
+
 ## References
 
 - When T2I Synthetic Data Backfires: Amplified Privacy Risks in Real-Synthetic Mix Training — arXiv 2607.13541
