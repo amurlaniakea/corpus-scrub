@@ -549,7 +549,7 @@ def test_005_secret_recall_by_type():
         "GITLAB_PAT_PLACEHOLDER": "glpat-" + "EXAMPLEtoken0000000000000000000000abcd",
         "OPENAI_KEY_PLACEHOLDER": "sk-" + "B" * 20 + "T3BlbkFJ" + "C" * 20,
         "ANTHROPIC_KEY_PLACEHOLDER": "sk-ant-api03-" + "A" * 93 + "AA",
-        "PYPI_TOKEN_PLACEHOLDER": "pypi-AgEIcH" + "D" * 10 + "vcmc" + "E" * 25,
+        "PYPI_TOKEN_PLACEHOLDER": "pypi-AgEIcHlwaS5vcmc" + "E" * 60,
         "GENERIC_API_KEY_PLACEHOLDER": "sk-" + "EXAMPLEtoken00000000000000000000abcd",
         "GENERIC_TOKEN_PLACEHOLDER": "EXAMPLEtoken00000000000000000000abcd",
     }
@@ -600,6 +600,95 @@ def test_005_gitleaks_commit_cited():
     from corpus_scrub.detectors.secrets import _GITLEAKS_COMMIT
 
     assert _GITLEAKS_COMMIT == "4c232b5014f7618360bd992b4c489cb055881c6b"
+
+
+def test_005_pypi_no_false_positive():
+    """AC-005-3: la regla pypi-upload-token NO marca cadenas sin el prefijo fijo.
+
+    Regresión de #10: la regla portada originalmente usaba un comodín
+    (\\w{8,}) en vez del fragmento base64 fijo 'AgEIcHlwaS5vcmc', lo que marcaba
+    como secreto de PyPI cualquier texto con forma 'pypi-AgEIcH<8+ chars>vcmc<20+>'
+    aunque NO fuera un token real (falso positivo demostrado). La regla real de
+    gitleaks exige el prefijo fijo + rango {50,1000}.
+    """
+    from corpus_scrub.detectors.secrets import SecretDetector
+
+    det = SecretDetector()
+    # Cadena que parece token de PyPI pero carece del fragmento fijo 'lwaS5'
+    # (no es un token real de PyPI). La regla corregida debe RECHAZARLA.
+    fp = "pypi-AgEIcHXXXXXXXXvcmc" + "Y" * 25
+    findings = [f for f in det.detect("doc", fp) if "pypi-upload-token" in f.text]
+    assert not findings, f"Falso positivo de PyPI con cadena no real: {fp!r}"
+    # Un token real (prefijo fijo + 50+ chars) sí debe detectarse.
+    real = "pypi-AgEIcHlwaS5vcmc" + "A" * 60
+    findings_real = [f for f in det.detect("doc", real) if "pypi-upload-token" in f.text]
+    assert findings_real, "Token real de PyPI no detectado tras el fix de #10"
+
+
+def test_005_rules_verbatim_vs_gitleaks():
+    """AC-005-4: cada regla portada coincide con su regex original de gitleaks.
+
+    Verificación automatizada (regla-por-regla) contra el gitleaks.toml del
+    commit fijado, embebido como fixture. Detecta derivas como las de #10
+    (pypi comodín, anthropic placeholder ofuscado, stripe sin boundary) sin
+    revisión manual. Se compara por COMPORTAMIENTO de match sobre una muestra
+    representativa por tipo de secreto, no por texto, para ignorar diferencias
+    de escapado TOML/Python que no cambian el resultado.
+    """
+    import re
+
+    from corpus_scrub.detectors.secrets import (
+        _GITLEAKS_COMMIT,
+        _SECRET_RULES,
+    )
+    from tests._gitleaks_parse import _load_gitleaks_rules
+
+    toml_path = "tests/data/fixtures/gitleaks_4c232b5.toml"
+    orig = _load_gitleaks_rules(toml_path)
+
+    drift = []
+    for rule_id, pattern in _SECRET_RULES:
+        if rule_id not in orig:
+            drift.append(f"{rule_id}: no existe en gitleaks @ {_GITLEAKS_COMMIT}")
+            continue
+        try:
+            orig_re = re.compile(orig[rule_id])
+        except re.error as e:
+            drift.append(f"{rule_id}: regex original no compila: {e}")
+            continue
+        sample = _sample_for(rule_id)
+        if sample:
+            if bool(orig_re.search(sample)) != bool(pattern.search(sample)):
+                drift.append(
+                    f"{rule_id}: comportamiento distinto en muestra representativa"
+                )
+        # Si la regla portada contiene un placeholder ofuscado, es deriva segura.
+        if "redacted" in pattern.pattern.lower() or "…" in pattern.pattern:
+            drift.append(f"{rule_id}: contiene placeholder ofuscado en la regex")
+    assert not drift, "Reglas con deriva vs gitleaks:\n  - " + "\n  - ".join(drift)
+
+
+def _sample_for(rule_id: str) -> str:
+    """Muestra sintética representativa para comparar match de una regla."""
+    samples = {
+        "generic-api-key": "api_key = \"abcdefghijklmnop\"",
+        "aws-access-token": "AKIAIOSFODNN7EXAMPLE",
+        "private-key": "-----BEGIN PRIVATE KEY-----\nabcdef\n-----END PRIVATE KEY-----",
+        "slack-bot-token": "xoxb-123456789012-123456789012-abcdefghijkl",
+        "slack-webhook-url": "https://hooks.slack.com/services/T000/B000/XXXXYYYY",
+        "stripe-access-token": "sk_live_abcdefghijklmnopqr",
+        "github-pat": "ghp_" + "a" * 36,
+        "github-oauth": "gho_" + "a" * 36,
+        "github-app-token": "ghu_" + "a" * 36,
+        "github-fine-grained-pat": "github_pat_" + "a" * 82,
+        "gitlab-pat": "glpat-" + "a" * 20,
+        "gitlab-ptt": "glptt-" + "0" * 40,
+        "openai-api-key": "sk-proj-" + "A" * 74 + "T3BlbkFJ" + "B" * 74,
+        "anthropic-api-key": "sk-ant-api03-" + ("x" * 92 + "-") + "AA",
+        "pypi-upload-token": "pypi-AgEIcHlwaS5vcmc" + "A" * 60,
+        "cloudflare-api-key": "cloudflare api key = \"abcdefghijklmnopqrstuvwxyz0123456789\"",
+    }
+    return samples.get(rule_id, "")
 
 
 # --- Feature 006: multi-idioma (NER PERSON ES/DE/FR + universales sin modelo) ---
