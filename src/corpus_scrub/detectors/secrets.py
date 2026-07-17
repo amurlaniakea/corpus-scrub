@@ -26,7 +26,9 @@ un ruleset curado de reglas reales de gitleaks, portadas a regex Python.
 Fuente fijada (KI-3: se anuncia recall de secretos -> commit fijado):
   github.com/gitleaks/gitleaks @ 4c232b5014f7618360bd992b4c489cb055881c6b
   (config/gitleaks.toml, 222 reglas). Cada regla porta su `id` y `regex` originales;
-  NO se inventa ninguna regex. Multi-idioma (regex, no depende de NER).
+  NO se inventa ninguna regex. Verificado automáticamente por
+  test_005_rules_verbatim_vs_gitleaks contra el gitleaks.toml embebido como fixture.
+  Multi-idioma (regex, no depende de NER).
 
 Score fijo 1.0: son regex exactas, no probabilísticas. El filtrado de FP se hace
 en la regex misma (keywords/prefijos), no bajando umbral.
@@ -51,7 +53,7 @@ _SECRET_RULES: List[Tuple[str, re.Pattern]] = [
     (
         "generic-api-key",
         re.compile(
-            r"(?i)[\w.-]{0,50}?(?:access|auth|api|credential|creds|key|passw(?:or)?d|"
+            r"(?i)[\w.-]{0,50}?(?:access|auth|(?-i:[Aa]pi|API)|credential|creds|key|passw(?:or)?d|"
             r"secret|token)(?:[ \t\w.-]{0,20})[\s'\"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)"
             r"[\x60'\"\s=]{0,5}([\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3})"
             r"(?:[\x60'\"\s;]|\\[nr]|$)"
@@ -76,7 +78,13 @@ _SECRET_RULES: List[Tuple[str, re.Pattern]] = [
         ),
     ),
     # stripe-access-token
-    ("stripe-access-token", re.compile(r"\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})")),
+    (
+        "stripe-access-token",
+        re.compile(
+            r"\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})"
+            r"(?:[\x60'\"\s;]|\\[nr]|$)"
+        ),
+    ),
     # github-pat / github-oauth / github-app-token / github-fine-grained-pat
     ("github-pat", re.compile(r"ghp_[0-9a-zA-Z]{36}")),
     ("github-oauth", re.compile(r"gho_[0-9a-zA-Z]{36}")),
@@ -99,8 +107,8 @@ _SECRET_RULES: List[Tuple[str, re.Pattern]] = [
         "anthropic-api-key",
         re.compile(r"\b(sk-ant-api03-[a-zA-Z0-9_-]{93}AA)(?:[\x60'\"\s;]|\\[nr]|$)"),
     ),
-    # pypi-upload-token (prefijo 'pypi-AgEIcH' + 8 chars + 'vcmc' en gitleaks)
-    ("pypi-upload-token", re.compile(r"pypi-AgEIcH\w{8,}vcmc[\w-]{20,}")),
+    # pypi-upload-token (gitleaks real @4c232b5: prefijo fijo 'pypi-AgEIcHlwaS5vcmc' + 50-1000)
+    ("pypi-upload-token", re.compile(r"pypi-AgEIcHlwaS5vcmc[\w-]{50,1000}")),
     # cloudflare-api-key
     (
         "cloudflare-api-key",
