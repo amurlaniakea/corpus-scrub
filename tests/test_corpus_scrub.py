@@ -611,7 +611,7 @@ def test_006_person_recall_by_lang():
     Carga spaCy del idioma (modelo _lg si está, si no _sm)."""
     import json
 
-    from corpus_scrub.detectors.pii import PiiDetector, _SPACY_LANG_MODELS
+    from corpus_scrub.detectors.pii import _SPACY_LANG_MODELS, PiiDetector
 
     # nombres propios sembrados por doc
     seeded = {
@@ -665,7 +665,7 @@ def test_006_precision_benign_multilang():
     Mide FP de PERSON. Si > 5% del total de entidades, lo reporta (no promete ciego)."""
     import json
 
-    from corpus_scrub.detectors.pii import PiiDetector, _SPACY_LANG_MODELS
+    from corpus_scrub.detectors.pii import _SPACY_LANG_MODELS, PiiDetector
 
     for lang in ("es", "de", "fr"):
         det = PiiDetector(language=lang)
