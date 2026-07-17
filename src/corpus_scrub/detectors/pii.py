@@ -83,6 +83,9 @@ class PiiDetector:
                 raise RuntimeError(
                     f"No se pudo instanciar AnalyzerEngine (¿faltan modelos spaCy EN?): {e}"
                 ) from e
+            self._nlp = None
+            self._model_loaded = None
+            self._using_fallback = False
         elif language in _SPACY_LANG_MODELS:
             model = _SPACY_LANG_MODELS[language]
             try:
@@ -93,10 +96,31 @@ class PiiDetector:
                 self._using_fallback = True
             else:
                 self._using_fallback = False
+            self._model_loaded = getattr(self._nlp, "meta", {}).get("name")
         else:
             # Idioma no soportado: fallback multilingüe (no crashear, KI-1 honesto)
             self._nlp = _load_spacy(_MULTILINGUAL_FALLBACK)
             self._using_fallback = True
+            self._model_loaded = getattr(self._nlp, "meta", {}).get("name")
+
+    @property
+    def model_loaded(self) -> str | None:
+        """Nombre del modelo spaCy realmente cargado (p.ej. ``es_core_news_lg``).
+
+        Útil para auditoría: distingue si el detector usa el modelo dedicado del
+        idioma o cayó al fallback multilingüe ``xx_ent_wiki_sm``.
+        """
+        return self._model_loaded
+
+    @property
+    def using_fallback(self) -> bool:
+        """``True`` si el detector NER usa el fallback multilingüe en vez del modelo dedicado.
+
+        Los AC-006-1/AC-006-2 solo son válidos con el modelo dedicado instalado;
+        si esto es ``True`` para es/de/fr, los resultados de precisión/recall no
+        representan la garantía documentada y deben fallar explícitamente.
+        """
+        return self._using_fallback
 
     def _detect_person_spacy(self, doc_id: str, text: str) -> List[Finding]:
         findings: List[Finding] = []

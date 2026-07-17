@@ -25,10 +25,19 @@ jobs:
           ruff check .
       - name: Tests (fast, no model download)
         run: pytest -m "not slow" --cov=corpus_scrub --cov-report=xml -q
-      # Slow tests require spaCy en_core_web_lg download (~400 MB) and network.
-      # Run separately if a runner allows it:
-      # - name: Tests (slow, NER)
-      #   run: pytest -m slow -q
+      # Slow tests require spaCy model downloads (~1.7 GB) and network.
+      # AC-006-1/AC-006-2 (multi-idioma) FALLAN si no están instalados los
+      # modelos dedicados es/de/fr_core_news_lg: caen al fallback multilingüe
+      # xx_ent_wiki_sm y el test lo detecta (ver PR #9 / KI-4). Por eso los
+      # pre-descargamos explícitamente antes de correr -m slow.
+      - name: Download spaCy models for slow tests
+        run: |
+          python -m spacy download en_core_web_lg
+          python -m spacy download es_core_news_lg
+          python -m spacy download de_core_news_lg
+          python -m spacy download fr_core_news_lg
+      - name: Tests (slow, NER)
+        run: pytest -m slow -q
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
