@@ -611,7 +611,7 @@ def test_006_person_recall_by_lang():
     Carga spaCy del idioma (modelo _lg si está, si no _sm)."""
     import json
 
-    from corpus_scrub.detectors.pii import PiiDetector
+    from corpus_scrub.detectors.pii import _SPACY_LANG_MODELS, PiiDetector
 
     # nombres propios sembrados por doc
     seeded = {
@@ -625,6 +625,16 @@ def test_006_person_recall_by_lang():
     by_lang = {}
     for lang in ("es", "de", "fr"):
         det = PiiDetector(language=lang)
+        # AC-006-1 solo es válido con el modelo dedicado del idioma instalado.
+        # Si cayó al fallback multilingüe (xx_ent_wiki_sm), el recall no representa
+        # la garantía documentada y el test debe FALLAR con un mensaje claro en vez
+        # de pasar silenciosamente contra un modelo distinto (ver PR #9 / KI-4).
+        assert not det.using_fallback, (
+            f"AC-006-1 inválido para '{lang}': el detector cargó el fallback "
+            f"multilingüe ({det.model_loaded}) en vez de "
+            f"{_SPACY_LANG_MODELS[lang]}. Instala el modelo dedicado antes de "
+            f"correr este test: python -m spacy download {_SPACY_LANG_MODELS[lang]}"
+        )
         tp = fn = 0
         for line in open("tests/data/fixtures/multilingue_seed.jsonl"):
             line = line.strip()
@@ -655,10 +665,20 @@ def test_006_precision_benign_multilang():
     Mide FP de PERSON. Si > 5% del total de entidades, lo reporta (no promete ciego)."""
     import json
 
-    from corpus_scrub.detectors.pii import PiiDetector
+    from corpus_scrub.detectors.pii import _SPACY_LANG_MODELS, PiiDetector
 
     for lang in ("es", "de", "fr"):
         det = PiiDetector(language=lang)
+        # AC-006-2 solo es válido con el modelo dedicado del idioma instalado.
+        # Con fallback multilingüe la precisión (FP) difiere de la garantía
+        # documentada; el test debe FALLAR en vez de pasar silenciosamente
+        # contra un modelo distinto (ver PR #9 / KI-4).
+        assert not det.using_fallback, (
+            f"AC-006-2 inválido para '{lang}': el detector cargó el fallback "
+            f"multilingüe ({det.model_loaded}) en vez de "
+            f"{_SPACY_LANG_MODELS[lang]}. Instala el modelo dedicado antes de "
+            f"correr este test: python -m spacy download {_SPACY_LANG_MODELS[lang]}"
+        )
         fp = 0
         docs = 0
         for line in open("tests/data/fixtures/multilingue_benign.jsonl"):

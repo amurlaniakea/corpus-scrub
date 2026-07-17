@@ -53,9 +53,20 @@ corpus-scrub scan --input corpus.jsonl --lang en
 
 ```bash
 pytest -m "not slow"   # fast suite (no model download)
-pytest -m slow         # requires spaCy en_core_web_lg download
+pytest -m slow         # requires spaCy models: en_core_web_lg + es/de/fr_core_news_lg
 pytest                 # full suite + coverage
 ```
+
+> **Slow tests y modelos dedicados (Feature 006 / PR #9).** Los tests
+> `test_006_*` (AC-006-1 recall, AC-006-2 precisión multilingüe) exigen los
+> modelos `es_core_news_lg`, `de_core_news_lg` y `fr_core_news_lg` instalados.
+> Si falta alguno, el detector cae al fallback multilingüe `xx_ent_wiki_sm` y
+> **los tests fallan explícitamente** (no pasan en silencio con una precisión
+> distinta a la garantizada). Descárgalos antes de correr `-m slow`:
+>
+> ```bash
+> python -m spacy download en_core_web_lg es_core_news_lg de_core_news_lg fr_core_news_lg
+> ```
 
 Current coverage: **82%** (measured via `pytest --cov`, see CI).
 
